@@ -1,0 +1,330 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                   String               @id @default(cuid())
+  name                 String
+  email                String               @unique
+  phone                String               @unique
+  normalizedPhone      String               @unique
+  role                 UserRole
+  status               AccountStatus        @default(active)
+  passwordHash         String
+  avatar               String?
+  branchId             String?
+  lastLoginAt          DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  updatedSettings      AppSetting[]         @relation("SettingUpdatedBy")
+  auditLogs            AuditLog[]           @relation("AuditActor")
+  createdOrders        Order[]              @relation("OrderCreatedBy")
+  changedOrderStatuses OrderStatusHistory[] @relation("OrderStatusChangedBy")
+  otpRequests          OtpRequest[]
+  refreshTokens        RefreshToken[]
+  branch               Branch?              @relation(fields: [branchId], references: [id])
+  whatsappMessages     WhatsAppMessage[]
+
+  @@index([branchId])
+}
+
+model Branch {
+  id           String          @id @default(cuid())
+  name         String          @unique
+  address      String
+  phone        String
+  hours        String
+  status       BranchStatus    @default(active)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  orders       Order[]
+  ratings      Rating[]
+  serviceLinks ServiceBranch[]
+  staff        User[]
+
+  @@index([status])
+}
+
+model LaundryService {
+  id                     String          @id @default(cuid())
+  name                   String
+  category               String
+  price                  Int
+  unit                   String
+  durationLabel          String
+  estimatedDurationHours Int
+  status                 ServiceStatus   @default(active)
+  deletedAt              DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  orderItems             OrderItem[]
+  branchLinks            ServiceBranch[]
+
+  @@index([status, deletedAt])
+  @@index([category])
+}
+
+model ServiceBranch {
+  id        String         @id @default(cuid())
+  serviceId String
+  branchId  String
+  createdAt DateTime       @default(now())
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  service   LaundryService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, branchId])
+  @@index([branchId])
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  name            String?
+  phone           String
+  normalizedPhone String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  orders          Order[]
+  ratings         Rating[]
+}
+
+model Order {
+  id                      String                 @id @default(cuid())
+  code                    String                 @unique
+  customerId              String
+  branchId                String
+  createdByUserId         String?
+  customerName            String
+  customerPhone           String
+  normalizedCustomerPhone String
+  paymentMethod           String
+  status                  String                 @default("Baru Masuk")
+  subtotalAmount          Int
+  manualAdjustmentAmount  Int                    @default(0)
+  totalAmount             Int
+  totalOverrideReason     String?
+  estimatedDoneAt         DateTime?
+  pickedUpAt              DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  branch                  Branch                 @relation(fields: [branchId], references: [id])
+  createdByUser           User?                  @relation("OrderCreatedBy", fields: [createdByUserId], references: [id])
+  customer                Customer               @relation(fields: [customerId], references: [id])
+  items                   OrderItem[]
+  statusHistories         OrderStatusHistory[]
+  ratings                 Rating?
+  whatsappMessages        WhatsAppMessage[]
+  whatsappRatingSessions  WhatsAppRatingSession?
+
+  @@index([branchId, status, createdAt])
+  @@index([customerId, createdAt])
+  @@index([normalizedCustomerPhone])
+}
+
+model OrderItem {
+  id          String          @id @default(cuid())
+  orderId     String
+  serviceId   String?
+  serviceName String
+  qty         Float
+  unit        String
+  price       Int
+  subtotal    Int
+  createdAt   DateTime        @default(now())
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  service     LaundryService? @relation(fields: [serviceId], references: [id])
+
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id              String   @id @default(cuid())
+  orderId         String
+  status          String
+  notes           String?
+  changedByUserId String?
+  createdAt       DateTime @default(now())
+  changedByUser   User?    @relation("OrderStatusChangedBy", fields: [changedByUserId], references: [id])
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+model Rating {
+  id           String    @id @default(cuid())
+  orderId      String?   @unique
+  customerId   String?
+  branchId     String?
+  customerName String
+  branchName   String
+  rating       Int
+  feedback     String?
+  createdAt    DateTime  @default(now())
+  branch       Branch?   @relation(fields: [branchId], references: [id])
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  order        Order?    @relation(fields: [orderId], references: [id])
+
+  @@index([branchId, createdAt])
+}
+
+model OtpRequest {
+  id               String            @id @default(cuid())
+  userId           String
+  codeHash         String
+  purpose          OtpPurpose        @default(login)
+  channel          String            @default("whatsapp")
+  attempts         Int               @default(0)
+  maxAttempts      Int               @default(5)
+  resendCount      Int               @default(0)
+  expiresAt        DateTime
+  verifiedAt       DateTime?
+  consumedAt       DateTime?
+  invalidatedAt    DateTime?
+  lastSentAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappMessages WhatsAppMessage[]
+
+  @@index([userId, purpose, createdAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model WhatsAppMessage {
+  id                String                   @id @default(cuid())
+  type              WhatsAppMessageType
+  direction         WhatsAppMessageDirection @default(outbound)
+  targetPhone       String
+  normalizedPhone   String
+  message           String
+  orderId           String?
+  otpRequestId      String?
+  userId            String?
+  providerRequestId Int?
+  providerMessageId String?                  @unique
+  providerStateId   String?                  @unique
+  status            WhatsAppDeliveryStatus   @default(pending)
+  state             String?
+  errorMessage      String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  order             Order?                   @relation(fields: [orderId], references: [id])
+  otpRequest        OtpRequest?              @relation(fields: [otpRequestId], references: [id])
+  user              User?                    @relation(fields: [userId], references: [id])
+
+  @@index([orderId, createdAt])
+  @@index([otpRequestId, createdAt])
+}
+
+model WhatsAppRatingSession {
+  id              String                     @id @default(cuid())
+  orderId         String                     @unique
+  normalizedPhone String
+  state           WhatsAppRatingSessionState @default(waiting_rating)
+  rating          Int?
+  completedAt     DateTime?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  order           Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([normalizedPhone, state, updatedAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String
+  description String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actorUser   User?    @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+}
+
+model AppSetting {
+  id                        Int      @id @default(1)
+  businessName              String   @default("LaundryPro")
+  whatsappAutoNotifyEnabled Boolean  @default(true)
+  requestRatingEnabled      Boolean  @default(true)
+  otpExpiryMinutes          Int      @default(5)
+  otpResendCooldownSeconds  Int      @default(60)
+  updatedByUserId           String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  updatedByUser             User?    @relation("SettingUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  @@index([updatedByUserId])
+}
+
+enum UserRole {
+  super_admin
+  staff_pos
+}
+
+enum AccountStatus {
+  active
+  inactive
+}
+
+enum BranchStatus {
+  active
+  inactive
+}
+
+enum ServiceStatus {
+  active
+  inactive
+}
+
+enum OtpPurpose {
+  login
+}
+
+enum WhatsAppDeliveryStatus {
+  pending
+  sent
+  delivered
+  failed
+}
+
+enum WhatsAppMessageDirection {
+  outbound
+  inbound
+}
+
+enum WhatsAppMessageType {
+  otp_login
+  order_status_ready
+  order_status_completed
+  manual_status_update
+  rating_request
+  rating_follow_up
+}
+
+enum WhatsAppRatingSessionState {
+  waiting_rating
+  waiting_feedback
+  completed
+}
