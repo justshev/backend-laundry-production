@@ -7,3 +7,5 @@ export const customerQuerySchema = z.object({
 export const customerParamsSchema = z.object({
   id: z.string().min(1),
 });
+
+//cd
