@@ -13,7 +13,7 @@ export const authController = {
       data,
     });
   },
-
+  //tes
   async verifyOtpLogin(req: Request, res: Response) {
     const data = await authService.verifyOtpLogin({
       ...req.body,
